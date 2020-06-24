@@ -1,0 +1,38 @@
+- name: Check existing StorageClass for {{ bogus_storageclass_name }} in migration target cluster {{ migcluster_target_name }}
+  k8s_facts:
+    api_version: v1
+    kind: StorageClass 
+  register: all_sc
+
+#- debug:
+#    msg: "{{ all_sc }}"
+
+- block:
+
+  - name: Extract StorageClass for {{ bogus_storageclass_name }} in migration target cluster {{ migcluster_target_name }}
+    set_fact:
+      sc_to_remove: "{{ all_sc | json_query('resources[].metadata.name') | select('match', bogus_storageclass_name) | list }}"
+
+  - debug:
+      msg: 
+        - "These existing StorageClass will be removed :"
+        - "{{ sc_to_remove }}"
+
+  - name: Remove existing storageclass for {{ bogus_storageclass_name }} from migration target cluster {{ migcluster_target_name }}
+    k8s:
+      state: absent
+      api_version: v1
+      kind: StorageClass 
+      name: "{{ item }}"
+      wait: yes
+    loop: "{{ sc_to_remove }}"
+
+  when: "bogus_storageclass_name in (all_sc | json_query('resources[].metadata.name') | string )"
+
+
+- name: Create bogus storageclasses in migration target cluster {{ migcluster_target_name }}
+  k8s:
+    state: present
+    definition: "{{ lookup('file', 'test_storageclasses.yml') }}"
+
+

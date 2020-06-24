@@ -1,0 +1,62 @@
+- name: Check existing StorageClass for {{ bogus_storageclass_name }} in migration source cluster {{ migcluster_source_name }}
+  k8s_facts:
+    api_version: v1
+    kind: StorageClass 
+  register: all_sc
+
+- debug:
+    msg: "{{ all_sc }}"
+
+- block:
+
+  - name: Extract StorageClass for {{ bogus_storageclass_name }} in migration source cluster {{ migcluster_source_name }}
+    set_fact:
+      sc_to_remove: "{{ all_sc | json_query('resources[].metadata.name') | select('match', bogus_storageclass_name) | list }}"
+
+  - debug:
+      msg: 
+        - "These existing StorageClass will be removed :"
+        - "{{ sc_to_remove }}"
+
+  - name: Remove existing storageclass for {{ bogus_storageclass_name }} from migration source cluster {{ migcluster_source_name }}
+    k8s:
+      state: absent
+      api_version: v1
+      kind: StorageClass 
+      name: "{{ item }}"
+      wait: yes
+    loop: "{{ sc_to_remove }}"
+
+  when: "bogus_storageclass_name in (all_sc | json_query('resources[].metadata.name') | string )"
+
+
+- name: Create bogus storageclasses in migration source cluster {{ migcluster_source_name }}
+  k8s:
+    state: present
+    definition: "{{ lookup('file', 'test_storageclasses.yml') }}"
+
+
+- name: clear the expired source cluster sc name list in tmp file 
+  file:
+    path: "{{ source_cluster_sc_name_list_tmp_file }}"
+    state: absent
+  when: source_cluster_sc_name_list_tmp_file is defined
+
+- name: sleep a while to wait configuration working
+  pause:
+    seconds: "60"
+
+- name: Check existing StorageClass for {{ bogus_storageclass_name }} in migration source cluster {{ migcluster_source_name }} again
+  k8s_facts:
+    api_version: v1
+    kind: StorageClass
+  register: all_sc_1
+
+- debug:
+    msg: "{{ all_sc_1 }}"
+
+- name: save the source cluster sc name list to tmp file
+  copy:
+    content: "{{ all_sc_1 | json_query('resources[].metadata.name') |list }}" 
+    dest: "{{ source_cluster_sc_name_list_tmp_file }}"
+
